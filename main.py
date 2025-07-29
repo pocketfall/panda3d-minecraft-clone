@@ -7,7 +7,7 @@ from panda3d.core import CollisionTraverser, CollisionNode, CollisionBox, Collis
 from panda3d.core import TransparencyAttrib
 from panda3d.core import WindowProperties
 
-# left at 
+# finished 
 
 loadPrcFile("settings.prc")
 
@@ -20,6 +20,7 @@ class Game(ShowBase):
 
     self.load_models()
     self.generate_terrain()
+    self.selected_block_type = "grass"
     self.setup_lights()
     self.setup_camera()
     self.setup_skybox()
@@ -123,9 +124,17 @@ class Game(ShowBase):
     self.accept("lshift", self.update_keymap, ["down", True])
     self.accept("lshift-up", self.update_keymap, ["down", False])
 
+    self.accept("1", self.set_selected_block_type, ["grass"])
+    self.accept("2", self.set_selected_block_type, ["dirt"])
+    self.accept("3", self.set_selected_block_type, ["sand"])
+    self.accept("4", self.set_selected_block_type, ["stone"])
+
   def handle_left_click(self):
     self.capture_mouse()
     self.remove_block()
+
+  def set_selected_block_type(self, block_type):
+    self.selected_block_type = block_type
 
   def remove_block(self):
     # method to remove a block the player is looking at
@@ -172,7 +181,7 @@ class Game(ShowBase):
       if distance_from_player < 12:
         hit_block_position = hit_object.getPos()
         new_block_position = hit_block_position + normal * 2
-        self.create_new_block(new_block_position.x, new_block_position.y, new_block_position.z, "grass")
+        self.create_new_block(new_block_position.x, new_block_position.y, new_block_position.z, self.selected_block_type)
 
   def update_keymap(self, key, value):
     self.key_map[key] = value
@@ -266,10 +275,17 @@ class Game(ShowBase):
     new_block_node = render.attachNewNode("new-block-placeholder")
     new_block_node.setPos(x, y, z)
 
-    if block_type == "grass":
-      self.grass_block.instanceTo(new_block_node)
-    elif block_type == "dirt":
-      self.dirt_block.instanceTo(new_block_node)
+   # if block_type == "grass":
+   #   self.grass_block.instanceTo(new_block_node)
+   # elif block_type == "dirt":
+   #   self.dirt_block.instanceTo(new_block_node)
+   # elif block_type == ""
+
+    match block_type:
+      case "grass": self.grass_block.instanceTo(new_block_node)
+      case "dirt": self.dirt_block.instanceTo(new_block_node)
+      case "stone": self.stone_block.instanceTo(new_block_node)
+      case "sand": self.sand_block.instanceTo(new_block_node)
 
 
     # add collision to the blocks
