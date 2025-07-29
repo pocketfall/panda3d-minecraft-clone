@@ -7,7 +7,7 @@ from panda3d.core import CollisionTraverser, CollisionNode, CollisionBox, Collis
 from panda3d.core import TransparencyAttrib
 from panda3d.core import WindowProperties
 
-# left at 1:04:16
+# left at 
 
 loadPrcFile("settings.prc")
 
@@ -106,7 +106,8 @@ class Game(ShowBase):
     # listen for the following key presses to call a corresponding function
     # for mouse control 
     self.accept("escape", self.release_mouse)
-    self.accept("mouse1", self.capture_mouse)
+    self.accept("mouse1", self.handle_left_click)
+    self.accept("mouse3", self.place_block)
 
     # movement controls
     self.accept("w", self.update_keymap, ["forward", True]) # extra args are a third argument passed as a list
@@ -121,6 +122,57 @@ class Game(ShowBase):
     self.accept("space-up", self.update_keymap, ["up", False])
     self.accept("lshift", self.update_keymap, ["down", True])
     self.accept("lshift-up", self.update_keymap, ["down", False])
+
+  def handle_left_click(self):
+    self.capture_mouse()
+    self.remove_block()
+
+  def remove_block(self):
+    # method to remove a block the player is looking at
+
+    # check if mouse collision ray is intersecting with a block
+    if self.ray_queue.getNumEntries() > 0:
+      # sort block entries by distance from camera
+      self.ray_queue.sortEntries()
+
+      # get the block closest to the camera
+      ray_hit = self.ray_queue.getEntry(0)
+
+      # get node of hit block
+      hit_node_path = ray_hit.getIntoNodePath()
+
+      # use PythonTag to remove the block
+      hit_object = hit_node_path.getPythonTag("owner")
+
+      # get block distance from player so we can't destroy objects that are far away
+      distance_from_player = hit_object.getDistance(self.camera)
+
+      # check if distance is lesser than what we want (12)
+      if distance_from_player < 12:
+        # to prevent memory leaks, delete the PythonTag
+        hit_node_path.clearPythonTag("owner")
+
+        # remove block
+        hit_object.removeNode()
+
+  def place_block(self):
+    # method to place a block next to another
+    
+    if self.ray_queue.getNumEntries() > 0:
+      self.ray_queue.sortEntries()
+      ray_hit = self.ray_queue.getEntry(0)
+      hit_node_path = ray_hit.getIntoNodePath()
+
+      # figure out which face of the block we are facing
+      normal = ray_hit.getSurfaceNormal(hit_node_path) # normal = a vector perpendicular to a block face
+
+      hit_object = hit_node_path.getPythonTag("owner")
+      distance_from_player = hit_object.getDistance(self.camera)
+
+      if distance_from_player < 12:
+        hit_block_position = hit_object.getPos()
+        new_block_position = hit_block_position + normal * 2
+        self.create_new_block(new_block_position.x, new_block_position.y, new_block_position.z, "grass")
 
   def update_keymap(self, key, value):
     self.key_map[key] = value
@@ -166,6 +218,7 @@ class Game(ShowBase):
     # disable default camera movement and add crosshairs
     self.disableMouse() # disable panda3d mouse control => lets us program our own camera controls
     self.camera.setPos(0, 0, 3) # set camera position to the top of the platflorm
+    self.camLens.setFov(80) # change FOV of camera so more can be on screen
 
     crosshairs = OnscreenImage(
         image= "crosshairs.png",
@@ -174,21 +227,57 @@ class Game(ShowBase):
         )
     crosshairs.setTransparency(TransparencyAttrib.MAlpha)
 
+    # create a collision traverser
+    # self.cTrav is a panda3d placeholder that checks whether one exists or not
+    # CollisionTraverser is for collisions between the player and the environment
+    self.cTrav = CollisionTraverser()
+
+    # create collision ray
+    # collision ray is for collision between the camera POV and objects around it
+    # (to let us interact with blocks like break them)
+    ray = CollisionRay()
+
+    # CollisionRay() has a method that sets the position and orientation of the ray
+    # in line with the camera we have in the game
+    ray.setFromLens(self.camNode, (0, 0))
+
+    ray_node = CollisionNode("line-of-sight")
+    ray_node.addSolid(ray)
+
+    ray_node_path = self.camera.attachNewNode(ray_node)
+
+    self.ray_queue = CollisionHandlerQueue()
+
+    self.cTrav.addCollider(ray_node_path, self.ray_queue)
+
   def generate_terrain(self):
     # generates a 20x20x10 block platform
     for z in range(10):
       for y in range(20):
         for x in range(20):
-          new_block_node = render.attachNewNode("new-block-placeholder")
-          new_block_node.setPos(
+          self.create_new_block(
               x * 2 - 20,
               y * 2 - 20,
-              -z * 2
-              )
-          if z == 0:
-            self.grass_block.instanceTo(new_block_node)
-          else:
-            self.dirt_block.instanceTo(new_block_node)
+              -z * 2,
+              "grass" if z == 0 else "dirt"
+              ) 
+
+  def create_new_block(self, x, y, z, block_type):
+    new_block_node = render.attachNewNode("new-block-placeholder")
+    new_block_node.setPos(x, y, z)
+
+    if block_type == "grass":
+      self.grass_block.instanceTo(new_block_node)
+    elif block_type == "dirt":
+      self.dirt_block.instanceTo(new_block_node)
+
+
+    # add collision to the blocks
+    block_solid = CollisionBox((-1, -1, -1), (1, 1, 1)) # check how this works ! we don't yet know
+    block_node = CollisionNode("block-collision-node")
+    block_node.addSolid(block_solid)
+    collider = new_block_node.attachNewNode(block_node)
+    collider.setPythonTag("owner", new_block_node)
 
   def load_models(self):
     # load models, since the loading is computationally expensive we want to do it only once
